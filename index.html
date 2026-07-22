@@ -29,6 +29,13 @@
               <option value="1912x1122" selected>1912 x 1122</option>
             </select>
           </label>
+          <label class="field">
+            <span>&#54868;&#47732; &#48176;&#52824;</span>
+            <select id="layoutPreset">
+              <option value="grid-2x2" selected>2 x 2</option>
+              <option value="top-two-bottom-one">3명: 상단 2칸 + 하단 가운데</option>
+            </select>
+          </label>
           <div class="toggle-row">
             <label>
               <input id="showChrome" type="checkbox" checked />
@@ -91,9 +98,11 @@
         <label class="field compact">
           <span>맞춤</span>
           <select class="fit-select">
-            <option value="cover">화면 채우기</option>
-            <option value="contain">전체 보이기</option>
-          </select>
+  <option value="contain">모바일 사진 (전체 보이기)</option>
+  <option value="contain-fill">화면 채우기 (전체 사진)</option>
+  <option value="original">원본 크기</option>
+  <option value="cover">화면 채우기</option>
+</select>
         </label>
         <label class="background-blind-toggle">
           <input class="background-blind-input" type="checkbox" />

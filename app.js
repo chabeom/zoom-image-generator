@@ -18,6 +18,7 @@ const participantList = document.querySelector("#participantList");
 const participantTemplate = document.querySelector("#participantTemplate");
 const meetingTitleInput = document.querySelector("#meetingTitle");
 const sizePresetInput = document.querySelector("#sizePreset");
+const layoutPresetInput = document.querySelector("#layoutPreset");
 const showChromeInput = document.querySelector("#showChrome");
 const showDividersInput = document.querySelector("#showDividers");
 const downloadBtn = document.querySelector("#downloadBtn");
@@ -73,7 +74,7 @@ let participants = DEFAULT_PARTICIPANTS.map((person) => ({
   ...person,
   image: null,
   fileName: "",
-  fit: "cover",
+  fit: "contain",
   backgroundBlind: false,
   activeBorder: false,
   zoom: 1,
@@ -81,10 +82,71 @@ let participants = DEFAULT_PARTICIPANTS.map((person) => ({
   offsetY: 0,
 }));
 
+function isThreePersonLayout() {
+  return layoutPresetInput.value === "top-two-bottom-one";
+}
+
+function getActiveParticipantCount() {
+  return isThreePersonLayout() ? 3 : 4;
+}
+
+function getActiveParticipants() {
+  return participants.slice(0, getActiveParticipantCount());
+}
+
+function syncParticipantSlotsForLayout() {
+  if (isThreePersonLayout()) {
+    const lowerParticipant = getActiveParticipants().find((person) => {
+      return person.slot === "bottom-left" || person.slot === "bottom-right";
+    });
+
+    if (lowerParticipant) {
+      lowerParticipant.slot = "bottom-center";
+    }
+    return;
+  }
+
+  const centeredParticipant = participants.find((person) => person.slot === "bottom-center");
+  if (centeredParticipant) {
+    centeredParticipant.slot = "bottom-left";
+  }
+}
+
+function getVisibleSlots() {
+  return isThreePersonLayout()
+    ? ["top-left", "top-right", "bottom-center"]
+    : ["top-left", "top-right", "bottom-left", "bottom-right"];
+}
+
+function getSlotOptions() {
+  if (isThreePersonLayout()) {
+    return [
+      ["top-left", "\uC67C\uCABD \uC704"],
+      ["top-right", "\uC624\uB978\uCABD \uC704"],
+      ["bottom-center", "\uAC00\uC6B4\uB370 \uC544\uB798"],
+    ];
+  }
+
+  return [
+    ["top-left", "\uC67C\uCABD \uC704"],
+    ["top-right", "\uC624\uB978\uCABD \uC704"],
+    ["bottom-left", "\uC67C\uCABD \uC544\uB798"],
+    ["bottom-right", "\uC624\uB978\uCABD \uC544\uB798"],
+  ];
+}
+
+function getPlaceholderLabel(slot) {
+  if (slot === "bottom-center") {
+    return "\uAC00\uC6B4\uB370 \uC544\uB798";
+  }
+
+  return SLOT_LABELS[slot];
+}
+
 function buildParticipantCards() {
   participantList.innerHTML = "";
 
-  participants.forEach((person, index) => {
+  getActiveParticipants().forEach((person, index) => {
     const node = participantTemplate.content.firstElementChild.cloneNode(true);
     const number = node.querySelector(".participant-number");
     const photoInput = node.querySelector(".photo-input");
@@ -99,6 +161,10 @@ function buildParticipantCards() {
 
     number.textContent = `참가자 ${index + 1}`;
     nameInput.value = person.name;
+    slotSelect.innerHTML = "";
+    getSlotOptions().forEach(([value, label]) => {
+      slotSelect.add(new Option(label, value));
+    });
     slotSelect.value = person.slot;
     fitSelect.value = person.fit;
     backgroundBlindInput.checked = person.backgroundBlind;
@@ -169,7 +235,7 @@ function buildParticipantCards() {
 
 function moveParticipantToSlot(index, slot) {
   const currentSlot = participants[index].slot;
-  const otherIndex = participants.findIndex((person, personIndex) => {
+  const otherIndex = getActiveParticipants().findIndex((person, personIndex) => {
     return personIndex !== index && person.slot === slot;
   });
 
@@ -251,12 +317,12 @@ function getGridRect(width, height) {
 }
 
 function drawVideoGrid(grid) {
-  const orderedSlots = ["top-left", "top-right", "bottom-left", "bottom-right"];
+  const orderedSlots = getVisibleSlots();
   const renderedSlots = [];
 
   orderedSlots.forEach((slot) => {
     const rect = getSlotRect(grid, slot);
-    const person = participants.find((participant) => participant.slot === slot);
+    const person = getActiveParticipants().find((participant) => participant.slot === slot);
     renderedSlots.push({ rect, person });
 
     ctx.save();
@@ -267,7 +333,7 @@ function drawVideoGrid(grid) {
     if (person?.image) {
       drawFittedImage(person, rect, slot);
     } else {
-      drawPlaceholder(rect, SLOT_LABELS[slot]);
+      drawEmptyParticipant(person, rect, slot);
     }
 
     ctx.restore();
@@ -291,6 +357,15 @@ function drawVideoGrid(grid) {
 }
 
 function getSlotRect(grid, slot) {
+  if (isThreePersonLayout() && slot === "bottom-center") {
+    return {
+      x: grid.x + grid.slotWidth / 2,
+      y: grid.y + grid.slotHeight,
+      width: grid.slotWidth,
+      height: grid.slotHeight,
+    };
+  }
+
   const isRight = slot.endsWith("right");
   const isBottom = slot.startsWith("bottom");
   return {
@@ -301,18 +376,37 @@ function getSlotRect(grid, slot) {
   };
 }
 
+function drawEmptyParticipant(person, rect, slot) {
+  if (isThreePersonLayout() && person?.name?.trim()) {
+    ctx.fillStyle = "#15181b";
+    ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+
+    const fontSize = Math.max(28, Math.round(rect.width * 0.06));
+    ctx.fillStyle = "#f5f5f5";
+    ctx.font = "600 " + fontSize + "px Malgun Gothic, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(person.name.trim(), rect.x + rect.width / 2, rect.y + rect.height / 2);
+    return;
+  }
+
+  drawPlaceholder(rect, getPlaceholderLabel(slot));
+}
+
 function drawFittedImage(person, rect, slot) {
   const image = person.image;
   const naturalRatio = image.width / image.height;
   const targetRatio = rect.width / rect.height;
   const baseScale =
-    person.fit === "contain"
-      ? naturalRatio > targetRatio
-        ? rect.width / image.width
-        : rect.height / image.height
-      : naturalRatio > targetRatio
-        ? rect.height / image.height
-        : rect.width / image.width;
+    person.fit === "original"
+      ? 1
+      : person.fit === "contain" || person.fit === "contain-fill"
+        ? naturalRatio > targetRatio
+          ? rect.width / image.width
+          : rect.height / image.height
+        : naturalRatio > targetRatio
+          ? rect.height / image.height
+          : rect.width / image.width;
 
   const scale = baseScale * person.zoom;
   const drawWidth = image.width * scale;
@@ -321,18 +415,51 @@ function drawFittedImage(person, rect, slot) {
   const extraY = Math.max(0, drawHeight - rect.height);
   const offsetX = (person.offsetX / 100) * (extraX / 2);
   const offsetY = (person.offsetY / 100) * (extraY / 2);
-  const slotOffsetY = rect.height * (SLOT_IMAGE_Y_SHIFT[slot] || 0);
+  const slotOffsetY = person.fit === "cover" ? rect.height * (SLOT_IMAGE_Y_SHIFT[slot] || 0) : 0;
   const x = rect.x + (rect.width - drawWidth) / 2 + offsetX;
   const y = rect.y + (rect.height - drawHeight) / 2 + offsetY + slotOffsetY;
 
-  ctx.fillStyle = "#111";
+  ctx.fillStyle = person.fit === "contain" ? "#242424" : "#111";
   ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+
+  if (person.fit === "contain-fill") {
+    drawFilledContainImage(image, x, y, drawWidth, drawHeight, rect);
+    return;
+  }
 
   if (person.backgroundBlind) {
     drawBackgroundBlindImage(image, x, y, drawWidth, drawHeight, rect);
     return;
   }
 
+  ctx.drawImage(image, x, y, drawWidth, drawHeight);
+}
+
+function drawFilledContainImage(image, x, y, drawWidth, drawHeight, rect) {
+  const naturalRatio = image.width / image.height;
+  const targetRatio = rect.width / rect.height;
+  const backgroundScale =
+    naturalRatio > targetRatio ? rect.height / image.height : rect.width / image.width;
+  const backgroundWidth = image.width * backgroundScale;
+  const backgroundHeight = image.height * backgroundScale;
+  const backgroundX = rect.x + (rect.width - backgroundWidth) / 2;
+  const backgroundY = rect.y + (rect.height - backgroundHeight) / 2;
+  const blur = Math.max(12, Math.round(rect.width * 0.025));
+  const bleed = blur * 2;
+
+  ctx.save();
+  ctx.filter = "blur(" + blur + "px)";
+  ctx.drawImage(
+    image,
+    backgroundX - bleed,
+    backgroundY - bleed,
+    backgroundWidth + bleed * 2,
+    backgroundHeight + bleed * 2,
+  );
+  ctx.restore();
+
+  ctx.fillStyle = "rgba(0, 0, 0, 0.16)";
+  ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
   ctx.drawImage(image, x, y, drawWidth, drawHeight);
 }
 
@@ -697,9 +824,15 @@ function drawGridLines(grid) {
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(middleX, grid.y);
-  ctx.lineTo(middleX, grid.y + grid.slotHeight * 2);
+  ctx.lineTo(middleX, grid.y + grid.slotHeight);
   ctx.moveTo(grid.x, middleY);
   ctx.lineTo(grid.x + grid.slotWidth * 2, middleY);
+
+  if (!isThreePersonLayout()) {
+    ctx.moveTo(middleX, grid.y + grid.slotHeight);
+    ctx.lineTo(middleX, grid.y + grid.slotHeight * 2);
+  }
+
   ctx.stroke();
 }
 
@@ -808,6 +941,7 @@ function drawBottomToolbar(width, height) {
       width * (TOOLBAR_REFERENCE_SIZE.height / TOOLBAR_REFERENCE_SIZE.width),
     );
     ctx.drawImage(toolbarReferenceImage, 0, height - toolbarHeight, width, toolbarHeight);
+    drawToolbarParticipantCount(width, height, toolbarHeight);
     return;
   }
 
@@ -823,6 +957,25 @@ function drawBottomToolbar(width, height) {
   drawLeaveIcon(width - Math.round(46 * scale), y + Math.round(22 * scale), scale);
 }
 
+function drawToolbarParticipantCount(width, height, toolbarHeight) {
+  if (!isThreePersonLayout()) return;
+
+  const scaleX = width / TOOLBAR_REFERENCE_SIZE.width;
+  const scaleY = toolbarHeight / TOOLBAR_REFERENCE_SIZE.height;
+  const x = 773 * scaleX;
+  const y = height - toolbarHeight + 18 * scaleY;
+
+  ctx.save();
+  ctx.fillStyle = "#000";
+  ctx.fillRect(x - 2 * scaleX, y - 2 * scaleY, 14 * scaleX, 16 * scaleY);
+  ctx.fillStyle = "#e8edf2";
+  ctx.font = Math.max(9, Math.round(13 * scaleX)) + "px Arial, system-ui, sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText("3", x, y);
+  ctx.restore();
+}
+
 function drawToolbarLeft(y, scale) {
   const baseY = y + Math.round(21 * scale);
   drawMic(8 * scale, baseY, scale);
@@ -834,7 +987,7 @@ function drawToolbarLeft(y, scale) {
 function drawToolbarCenter(width, y, barHeight, scale) {
   const centerY = y + barHeight / 2 + 3 * scale;
   const items = [
-    { dx: -160, fn: drawPeople, text: "4" },
+    { dx: -160, fn: drawPeople, text: String(getActiveParticipantCount()) },
     { dx: -75, fn: drawChat, text: "" },
     { dx: 4, fn: drawHeart, text: "" },
     { dx: 84, fn: drawShare, text: "" },
@@ -1052,6 +1205,11 @@ function roundedRect(x, y, width, height, radius) {
 
 meetingTitleInput.addEventListener("input", render);
 sizePresetInput.addEventListener("change", render);
+layoutPresetInput.addEventListener("change", () => {
+  syncParticipantSlotsForLayout();
+  buildParticipantCards();
+  render();
+});
 showChromeInput.addEventListener("change", render);
 showDividersInput.addEventListener("change", render);
 refreshBtn.addEventListener("click", render);
@@ -1070,7 +1228,7 @@ resetBtn.addEventListener("click", () => {
     ...person,
     image: null,
     fileName: "",
-    fit: "cover",
+    fit: "contain",
     backgroundBlind: false,
     activeBorder: false,
     zoom: 1,
@@ -1079,6 +1237,7 @@ resetBtn.addEventListener("click", () => {
   }));
   meetingTitleInput.value = "Workplace";
   sizePresetInput.value = "1912x1122";
+  layoutPresetInput.value = "grid-2x2";
   showChromeInput.checked = true;
   showDividersInput.checked = true;
   buildParticipantCards();
